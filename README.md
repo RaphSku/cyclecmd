@@ -68,4 +68,4 @@ Note, that we can also set a line delimiter that will print in our case "\n\r>>>
 
 ## Example Projects
 If you want to see a complete example on how to leverage cyclecmd, please have a look at the following projects that use cyclecmd: 
-
+- [notewolfy](https://github.com/RaphSku/notewolfy)
