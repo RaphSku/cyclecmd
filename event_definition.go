@@ -6,9 +6,9 @@ package cyclecmd
 // Event expects the following method to be implemented by all events:
 //
 // Behavior:
-//   - `Handle(token string) error` : it expects the token that is associated with the event
+//   - `Handle(token string) (error, *ControlEvent)` : it expects the token that is associated with the event
 type Event interface {
-	Handle(token string) error
+	Handle(token string) (error, *ControlEvent)
 }
 
 // EventInformation stores the event itself but also the event name that was given to the custom event.

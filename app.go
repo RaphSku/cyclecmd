@@ -2,12 +2,9 @@
 package cyclecmd
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -16,7 +13,6 @@ import (
 
 // ConsoleApp handles all the events in an event loop and serves as an entry point for your console.
 type ConsoleApp struct {
-	ctx    context.Context
 	logger *zap.Logger
 	// The Event Registry is the source of truth for all custom events that
 	// were registered.
@@ -36,8 +32,6 @@ type ConsoleApp struct {
 	Delimiter string
 	// DelimiterEventTrigger defines when a Delimiter will be printed.
 	DelimiterEventTrigger string
-	// Should be only used when you want to pause your console application for some reason.
-	ControlC chan bool
 }
 
 // initLogger provides a Zap logger for structured logging.
@@ -72,7 +66,6 @@ func initLogger(debug bool) *zap.Logger {
 // to the event loop that will handle the custom events.
 //
 // Parameters:
-//   - `ctx` : Context that will be propagated to the event loop
 //   - `name` : Name of the Console App
 //   - `version` : Version of the Console App
 //   - `description` : Description of the Console App. Should be relatively short
@@ -82,7 +75,6 @@ func initLogger(debug bool) *zap.Logger {
 // Returns:
 //   - `*ConsoleApp` : An instance of a Console Application
 func NewConsoleApp(
-	ctx context.Context,
 	name string,
 	version string,
 	description string,
@@ -92,7 +84,6 @@ func NewConsoleApp(
 	logger := initLogger(false)
 
 	consoleApp := &ConsoleApp{
-		ctx:           ctx,
 		logger:        logger,
 		eventRegistry: eventRegistry,
 		eventHistory:  eventHistory,
@@ -100,7 +91,6 @@ func NewConsoleApp(
 		Version:       version,
 		Description:   description,
 	}
-	consoleApp.ControlC = make(chan bool)
 
 	return consoleApp
 }
@@ -118,7 +108,7 @@ func (ca *ConsoleApp) ChangeToDebugMode() {
 // after each event that is defined by eventTrigger.
 //
 // Parameters:
-//   - `delimiter` : Delimiter should be fairly short.
+//   - `delimiter` : Delimiter should be fairly short
 //   - `eventTrigger` : Delimiter will be printed after each event that is triggered by eventTrigger
 func (ca *ConsoleApp) SetLineDelimiter(delimiter string, eventTrigger string) {
 	ca.Delimiter = delimiter
@@ -133,18 +123,17 @@ func (ca *ConsoleApp) SetLineDelimiter(delimiter string, eventTrigger string) {
 // Start will save the terminal state, handle terminating signals and kick off the event loop. Note, events are recorded
 // in the event history before the event handling happens. They are recorded as they occur.
 func (ca *ConsoleApp) Start() {
+	defer ca.logger.Sync()
+
 	ca.logger.Debug("Saving current terminal (if Stdin is a terminal) state before entering the event loop", zap.String("func", "Start"))
 	prevState := ca.saveTerminalState()
 	ca.logger.Debug("Current terminal state has been saved successfully", zap.String("func", "Start"))
 
-	ca.logger.Debug("Starting the goroutine to handle terminating signals", zap.String("func", "Start"))
-	ca.handleTerminatingSignals(prevState)
-	ca.logger.Debug("Terminating signal handler started successfully", zap.String("func", "Start"))
-
 	ca.logger.Debug("Will enter event loop now", zap.String("func", "Start"))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ca.eventLoop(ctx, prevState)
+	if prevState != nil {
+		defer term.Restore(int(os.Stdin.Fd()), prevState)
+	}
+	ca.eventLoop(prevState)
 }
 
 // saveTerminalState will save the state of the terminal, if there is no terminal available, no state will be saved.
@@ -166,81 +155,76 @@ func (ca *ConsoleApp) saveTerminalState() *term.State {
 	return terminalState
 }
 
-// handleTerminatingSignals handels SIGINT and SIGTERM signals and will restore the original terminal state and will
-// exit successfully from the application.
-func (ca *ConsoleApp) handleTerminatingSignals(terminalState *term.State) {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		term.Restore(int(os.Stdin.Fd()), terminalState)
-		os.Exit(0)
-	}()
+// convertByteTokenToStringToken converts a token (a sequence of bytes) to a token (a string).
+//
+// Parameters:
+//   - `byteToken` : A token represented by a sequence of bytes
+//
+// Returns:
+//   - `string` : Returns the token but as a string
+func (ca *ConsoleApp) convertByteTokenToStringToken(byteToken []byte) string {
+	filteredByteArray := []byte{}
+	for _, byte := range byteToken {
+		if byte == 0 {
+			break
+		}
+		if byte != 0 {
+			filteredByteArray = append(filteredByteArray, byte)
+		}
+	}
+	if len(filteredByteArray) > 1 {
+		return fmt.Sprintf("%q", string(filteredByteArray))
+	}
+	return string(filteredByteArray)
 }
 
 // eventLoop is a long running process that will capture Stdin and handle incoming events,
 // as well as record the event history.
 //
 // Parameters:
-//   - `ctx` : Context that can be used to cancel the application
 //   - `prevState`: The previous terminal state that will be restored after the event loop concludes
-func (ca *ConsoleApp) eventLoop(ctx context.Context, prevState *term.State) {
-	if prevState != nil {
-		defer term.Restore(int(os.Stdin.Fd()), prevState)
-	}
-	defer ca.logger.Sync()
+func (ca *ConsoleApp) eventLoop(prevState *term.State) {
 	fmt.Printf("Welcome to %s! Version: %s\r\n%s\r", ca.Name, ca.Version, ca.Description)
 	fmt.Printf("%s", ca.Delimiter)
 	for {
-		select {
-		case <-ctx.Done():
-			ca.logger.Debug("Context is done", zap.String("func", "eventLoop"))
+		// TODO: Need to separate reading from parsing in the future to make this event loop more robust
+		b := make([]byte, 3)
+		n, err := os.Stdin.Read(b)
+		if n == 0 && prevState == nil {
+			ca.logger.Debug("EOF found", zap.String("func", "eventLoop"))
 			return
-		case active := <-ca.ControlC:
-			if !active {
-				ca.logger.Debug("Context has been paused", zap.String("func", "eventLoop"))
-				select {
-				case <-ca.ControlC:
-					ca.logger.Debug("Context has been resumed", zap.String("func", "eventLoop"))
-				case <-ctx.Done():
-					ca.logger.Debug("Context is done", zap.String("func", "eventLoop"))
-					return
-				}
-			}
-		default:
-			b := make([]byte, 1)
-			n, err := os.Stdin.Read(b)
-			if n == 0 && prevState == nil {
-				ca.logger.Debug("EOF found", zap.String("func", "eventLoop"))
+		}
+		if err != nil {
+			ca.logger.Debug("Could not read from Stdin", zap.Error(err), zap.String("func", "eventLoop"))
+			return
+		}
+		token := ca.convertByteTokenToStringToken(b)
+		ca.logger.Debug("Token captured", zap.String("Token", token), zap.String("func", "eventLoop"))
+		eventInformation, err := ca.eventRegistry.GetMatchingEventInformation(token)
+		if err != nil {
+			ca.logger.Debug("Did not find a matching event", zap.Error(err), zap.String("func", "eventLoop"))
+			return
+		}
+		eventHistoryEntry := EventHistoryEntry{
+			Token:     token,
+			EventName: eventInformation.EventName,
+			Event:     eventInformation.Event,
+		}
+		ca.eventHistory.AddEvent(eventHistoryEntry)
+		lengthOfHistoryString := strconv.Itoa(ca.eventHistory.Len())
+		ca.logger.Debug("Event History Length", zap.String("Length", lengthOfHistoryString), zap.String("func", "eventLoop"))
+		err, controlEvent := eventInformation.Event.Handle(token)
+		if err != nil {
+			ca.logger.Debug("Event handling failed", zap.Error(err), zap.String("func", "eventLoop"))
+			return
+		}
+		if controlEvent != nil {
+			if controlEvent.Terminate {
 				return
 			}
-			if err != nil {
-				ca.logger.Debug("Could not read from Stdin", zap.Error(err), zap.String("func", "eventLoop"))
-				return
-			}
-			token := string(b[0])
-			ca.logger.Debug("Token captured", zap.String("Token", token), zap.String("func", "eventLoop"))
-			eventInformation, err := ca.eventRegistry.GetMatchingEventInformation(token)
-			if err != nil {
-				ca.logger.Debug("Did not find a matching event", zap.Error(err), zap.String("func", "eventLoop"))
-				os.Exit(1)
-			}
-			eventHistoryEntry := EventHistoryEntry{
-				Token:     token,
-				EventName: eventInformation.EventName,
-				Event:     eventInformation.Event,
-			}
-			ca.eventHistory.AddEvent(eventHistoryEntry)
-			lengthOfHistoryString := strconv.Itoa(ca.eventHistory.Len())
-			ca.logger.Debug("Event History Length", zap.String("Length", lengthOfHistoryString), zap.String("func", "eventLoop"))
-			err = eventInformation.Event.Handle(token)
-			if err != nil {
-				ca.logger.Debug("Event handling failed", zap.Error(err), zap.String("func", "eventLoop"))
-				os.Exit(1)
-			}
-			if token == ca.DelimiterEventTrigger {
-				fmt.Print(ca.Delimiter)
-			}
+		}
+		if token == ca.DelimiterEventTrigger {
+			fmt.Print(ca.Delimiter)
 		}
 	}
 }
