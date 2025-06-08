@@ -1,6 +1,6 @@
 module github.com/RaphSku/cyclecmd
 
-go 1.21.0
+go 1.24.2
 
 require github.com/stretchr/testify v1.9.0
 

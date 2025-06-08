@@ -3,7 +3,6 @@
 package cyclecmd_test
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -15,9 +14,6 @@ import (
 func TestEventLifecycle(t *testing.T) {
 	t.Parallel()
 
-	ctxTimeout, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
 	defaultEventInformation := cyclecmd.EventInformation{
 		EventName: "Default",
 		Event:     &DefaultEvent{},
@@ -27,7 +23,6 @@ func TestEventLifecycle(t *testing.T) {
 	eventHistory := cyclecmd.NewEventHistory()
 
 	consoleApp := cyclecmd.NewConsoleApp(
-		ctxTimeout,
 		"TestConsoleApp",
 		"v0.1.0",
 		"Test Console Application",
@@ -45,19 +40,20 @@ func TestEventLifecycle(t *testing.T) {
 
 	userInput := []byte("Hello W\borld")
 
-	tmpFile, err := os.CreateTemp("", "test")
-	assert.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.Write(userInput)
-	assert.NoError(t, err)
-
-	_, err = tmpFile.Seek(0, 0)
+	r, w, err := os.Pipe()
 	assert.NoError(t, err)
 
 	prevStdin := os.Stdin
 	defer func() { os.Stdin = prevStdin }()
-	os.Stdin = tmpFile
+	os.Stdin = r
+
+	go func() {
+		for _, b := range userInput {
+			w.Write([]byte{b})
+			time.Sleep(10 * time.Millisecond)
+		}
+		w.Close()
+	}()
 
 	actOutput, err := captureStdOutput(func() {
 		consoleApp.Start()

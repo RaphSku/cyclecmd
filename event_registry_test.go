@@ -91,29 +91,3 @@ func TestNoDefaultEventInRegistry(t *testing.T) {
 		assert.Equal(t, fmt.Errorf("default event is not set! Please set it via InitEventRegistry"), err)
 	}
 }
-
-func TestValidatingEventTriggerInEventMatching(t *testing.T) {
-	t.Parallel()
-
-	eventRegistry := cyclecmd.NewEventRegistry(setupDefaultEventInformation())
-	actEventInformation, err := eventRegistry.GetMatchingEventInformation("default")
-	assert.Equal(t, cyclecmd.EventInformation{}, actEventInformation)
-	if assert.Error(t, err) {
-		assert.Equal(t, fmt.Errorf("ensure that the eventTrigger represents just one token ([]byte length of 1)"), err)
-	}
-}
-
-func TestValidatingEventTriggerInEventRegistering(t *testing.T) {
-	t.Parallel()
-
-	eventRegistry := cyclecmd.NewEventRegistry(setupDefaultEventInformation())
-
-	eventInformation := cyclecmd.EventInformation{
-		EventName: "Test",
-		Event:     &TestEvent{},
-	}
-	err := eventRegistry.RegisterEvent("default", eventInformation)
-	if assert.Error(t, err) {
-		assert.Equal(t, fmt.Errorf("ensure that the eventTrigger represents just one token ([]byte length of 1)"), err)
-	}
-}

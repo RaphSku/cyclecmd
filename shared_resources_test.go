@@ -11,9 +11,9 @@ import (
 
 type DefaultEvent struct{}
 
-func (de *DefaultEvent) Handle(token string) error {
+func (de *DefaultEvent) Handle(token string) (error, *cyclecmd.ControlEvent) {
 	fmt.Print(token)
-	return nil
+	return nil, nil
 }
 
 func setupDefaultEventInformation() cyclecmd.EventInformation {
@@ -25,16 +25,16 @@ func setupDefaultEventInformation() cyclecmd.EventInformation {
 
 type TestEvent struct{}
 
-func (te *TestEvent) Handle(token string) error {
+func (te *TestEvent) Handle(token string) (error, *cyclecmd.ControlEvent) {
 	fmt.Print("Testing this event")
-	return nil
+	return nil, nil
 }
 
 type BackspaceEvent struct{}
 
-func (be *BackspaceEvent) Handle(token string) error {
+func (be *BackspaceEvent) Handle(token string) (error, *cyclecmd.ControlEvent) {
 	fmt.Print("\b \b")
-	return nil
+	return nil, nil
 }
 
 func captureStdOutput(f func()) (string, error) {

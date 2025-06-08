@@ -3,7 +3,6 @@
 package cyclecmd_test
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"testing"
@@ -15,12 +14,10 @@ import (
 func TestConsoleAppCreation(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	eventRegistry := cyclecmd.NewEventRegistry(setupDefaultEventInformation())
 	eventHistory := cyclecmd.NewEventHistory()
 
 	actConsoleApp := cyclecmd.NewConsoleApp(
-		ctx,
 		"test",
 		"0.1.0",
 		"This is a test console application",
@@ -41,12 +38,10 @@ func TestConsoleAppCreation(t *testing.T) {
 func TestChangeToDebugMode(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	eventRegistry := cyclecmd.NewEventRegistry(setupDefaultEventInformation())
 	eventHistory := cyclecmd.NewEventHistory()
 
 	consoleApp := cyclecmd.NewConsoleApp(
-		ctx,
 		"test",
 		"0.1.0",
 		"This is a test console application",
@@ -65,7 +60,6 @@ func TestChangeToDebugMode(t *testing.T) {
 func TestSetLineDelimiter(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	eventRegistry := cyclecmd.NewEventRegistry(setupDefaultEventInformation())
 
 	expEventTrigger := "z"
@@ -78,7 +72,6 @@ func TestSetLineDelimiter(t *testing.T) {
 	eventHistory := cyclecmd.NewEventHistory()
 
 	consoleApp := cyclecmd.NewConsoleApp(
-		ctx,
 		"test",
 		"0.1.0",
 		"This is a test console application",
@@ -97,12 +90,10 @@ func TestSetLineDelimiterNotInRegistry(t *testing.T) {
 	t.Parallel()
 
 	if os.Getenv("UT_SetLineDelimiterNotInRegistry") == "1" {
-		ctx := context.Background()
 		eventRegistry := cyclecmd.NewEventRegistry(setupDefaultEventInformation())
 		eventHistory := cyclecmd.NewEventHistory()
 
 		consoleApp := cyclecmd.NewConsoleApp(
-			ctx,
 			"test",
 			"0.1.0",
 			"This is a test console application",

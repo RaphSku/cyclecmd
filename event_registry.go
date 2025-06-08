@@ -1,10 +1,30 @@
 package cyclecmd
 
-import "fmt"
+import (
+	"fmt"
+)
+
+// nonDefaultEvent is used when an event trigger is not registered and the byte length of
+// the token is greater than 3.
+type nonDefaultEvent struct{}
+
+// Handle does for nonDefaultEvent nothing since no event trigger has been specified.
+//
+// Parameters:
+//   - `token` : Token that should be handled given as a string
+//
+// Returns:
+//   - `error` : Returns no error in this case
+//   - `*ControlEvent` : Returns no control event in this case
+func (nde *nonDefaultEvent) Handle(token string) (error, *ControlEvent) {
+	return nil, nil
+}
 
 // EventRegistry contains all related information with custom events that are registered with
 // this registry.
 type EventRegistry struct {
+	nonDefaultEventInformation EventInformation
+
 	// registry is a key-value data structure, the key contains the event trigger and the value contains
 	// the EventInformation related to the event that was triggered by an event
 	registry map[string]EventInformation
@@ -20,12 +40,17 @@ type EventRegistry struct {
 //   - `defaultEventInformation` : Information related to the default event
 //
 // Returns:
-//   - `*EventRegistry` - Returns an instance of the event registry
+//   - `*EventRegistry` : Returns an instance of the event registry
 func NewEventRegistry(defaultEventInformation EventInformation) *EventRegistry {
 	eventRegistry := &EventRegistry{
 		DefaultEventInformation: defaultEventInformation,
 	}
 	eventRegistry.registry = make(map[string]EventInformation)
+
+	eventRegistry.nonDefaultEventInformation = EventInformation{
+		EventName: "NonDefault",
+		Event:     &nonDefaultEvent{},
+	}
 
 	return eventRegistry
 }
@@ -44,10 +69,6 @@ func (er *EventRegistry) ResetEventRegistry() {
 // Returns:
 //   - `error` : Returns an error when the event is already registered
 func (er *EventRegistry) RegisterEvent(eventTrigger string, eventInformation EventInformation) error {
-	err := er.validateEventTrigger(eventTrigger)
-	if err != nil {
-		return err
-	}
 	_, ok := er.registry[eventTrigger]
 	if ok {
 		return fmt.Errorf("event is already registered under event trigger %v", eventTrigger)
@@ -66,31 +87,18 @@ func (er *EventRegistry) RegisterEvent(eventTrigger string, eventInformation Eve
 //   - `EventInformation` : Information related to the event triggered by `eventTrigger`
 //   - `error` : An error is only returned when no default event is defined
 func (er *EventRegistry) GetMatchingEventInformation(eventTrigger string) (EventInformation, error) {
-	err := er.validateEventTrigger(eventTrigger)
-	if err != nil {
-		return EventInformation{}, err
-	}
 	eventInformation, ok := er.registry[eventTrigger]
 	if !ok {
-		defaultEvent := er.DefaultEventInformation.Event
-		if defaultEvent == nil {
-			return EventInformation{}, fmt.Errorf("default event is not set! Please set it via InitEventRegistry")
+		if len([]byte(eventTrigger)) == 1 {
+			defaultEvent := er.DefaultEventInformation.Event
+			if defaultEvent == nil {
+				return EventInformation{}, fmt.Errorf("default event is not set! Please set it via InitEventRegistry")
+			}
+			return er.DefaultEventInformation, nil
 		}
-		return er.DefaultEventInformation, nil
+		if len([]byte(eventTrigger)) > 1 {
+			return er.nonDefaultEventInformation, nil
+		}
 	}
 	return eventInformation, nil
-}
-
-// validateEventTrigger validates whether the eventTrigger represents just one token
-//
-// Parameters:
-//   - `eventTrigger` : String that triggers an event
-//
-// Returns:
-//   - `error` : Returns an error if the length of []byte(eventTrigger) is not equal to 1 (so no token)
-func (er *EventRegistry) validateEventTrigger(eventTrigger string) error {
-	if len([]byte(eventTrigger)) != 1 {
-		return fmt.Errorf("ensure that the eventTrigger represents just one token ([]byte length of 1)")
-	}
-	return nil
 }
